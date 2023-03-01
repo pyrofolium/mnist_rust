@@ -1,5 +1,7 @@
 [workspace]
 
 members = [
-    "matrix"
+    "matrix",
+    "mnist_reader",
+    "nn"
 ]
