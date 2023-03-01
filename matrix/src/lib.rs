@@ -4,8 +4,41 @@ use std::fmt::{Formatter};
 use std::iter::zip;
 use std::ops::{Add, Sub, Mul, Neg};
 
+//should be used for faster operations with a matrix.
+//This exists to allow for matrix multiplication with a vector to happen across
+//contiguous data.
+pub struct ColumnVector {
+    data: Vec<f32>
+}
+
 pub struct Matrix {
     data: Vec<Vec<f32>>,
+}
+
+impl ColumnVector {
+    pub fn from_vec(input: Vec<f32>) -> Self {
+        ColumnVector{
+            data: input
+        }
+    }
+
+    pub fn new_with_elements(size: usize, element: f32) -> Self {
+        let mut result = Vec::with_capacity(size);
+        for _ in 0..size{
+            result.push(element);
+        }
+        ColumnVector::from_vec(result)
+    }
+
+    fn _mul_matrix(self, matrix: &Matrix, mut result: ColumnVector) -> ColumnVector {
+        for (result_elem, matrix_row) in zip(&result.data.iter_mut(), &matrix.data) {
+            *result_elem = 0.0;
+            for (elem_vec, matrix_row_elem) in zip(&self.data, matrix_row) {
+                *result_elem += elem_vec * matrix_row_elem;
+            }
+        }
+        result
+    }
 }
 
 impl Matrix {
@@ -145,6 +178,12 @@ impl std::fmt::Debug for Matrix {
     }
 }
 
+impl std::fmt::Debug for ColumnVector {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        self.data.fmt(f)
+    }
+}
+
 impl Add<&Matrix> for &Matrix {
     type Output = Matrix;
     fn add(self, rhs: &Matrix) -> Matrix {
@@ -158,6 +197,23 @@ impl Sub<&Matrix> for &Matrix {
     fn sub(self, rhs: &Matrix) -> Self::Output {
         let result = Matrix::new_with_elements(self.data.len(), self.data[0].len(), 0.0);
         self._sub(rhs, result)
+    }
+}
+
+impl Mul<&ColumnVector> for &Matrix {
+    type Output = ColumnVector;
+
+    fn mul(self, rhs: &ColumnVector) -> Self::Output {
+        let result = ColumnVector::new_with_elements(rhs.data.len(), 0.0);
+        rhs._mul_matrix(self, result)
+    }
+}
+
+impl Mul<&Matrix> for &ColumnVector {
+    type Output = ColumnVector;
+    fn mul(self, rhs: &Matrix) -> Self::Output{
+        let result = ColumnVector::new_with_elements(self.data.len(), 0.0);
+        self._mul_matrix(rhs, result)
     }
 }
 

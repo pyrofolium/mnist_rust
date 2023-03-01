@@ -11,7 +11,6 @@ struct TrainingDataElement {
 }
 
 impl fmt::Display for TrainingDataElement {
-    // This trait requires `fmt` with this exact signature.
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "The image below is a {}\n", self.actual_result).unwrap();
         for (index, elem) in self.image.iter().enumerate() {
