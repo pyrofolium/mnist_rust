@@ -8,7 +8,7 @@ use std::ops::{Add, Sub, Mul, Neg};
 //This exists to allow for matrix multiplication with a vector to happen across
 //contiguous data.
 pub struct ColumnVector {
-    data: Vec<f32>
+    pub data: Vec<f32>
 }
 
 pub struct Matrix {
@@ -30,12 +30,53 @@ impl ColumnVector {
         ColumnVector::from_vec(result)
     }
 
-    fn _mul_matrix(self, matrix: &Matrix, mut result: ColumnVector) -> ColumnVector {
-        for (result_elem, matrix_row) in zip(&result.data.iter_mut(), &matrix.data) {
+    pub fn total(&self) -> f32 {
+        let mut result = 0.0;
+        for elem in &self.data {
+            result += elem;
+        }
+        result
+    }
+
+    pub fn average(&self) -> f32 {
+        self.total()/(self.data.len() as f32)
+    }
+
+    pub fn magnitude_squared(&self) -> f32 {
+        let mut acc = 0.0;
+        for elem in &self.data {
+            acc += elem.powi(2)
+        }
+        acc
+    }
+
+    fn _mul_matrix(&self, matrix: &Matrix, mut result: ColumnVector) -> ColumnVector {
+        for (result_elem, matrix_row) in zip(&mut result.data.iter_mut(), &matrix.data) {
             *result_elem = 0.0;
             for (elem_vec, matrix_row_elem) in zip(&self.data, matrix_row) {
                 *result_elem += elem_vec * matrix_row_elem;
             }
+        }
+        result
+    }
+
+    fn _add(&self, rhs: &ColumnVector, mut result: ColumnVector) -> ColumnVector {
+        for ((lhs_elem, rhs_elem), result_elem) in zip(zip(&self.data, &rhs.data), result.data.iter_mut()) {
+            *result_elem = lhs_elem + rhs_elem;
+        }
+        result
+    }
+
+    fn _neg(&self, mut result: ColumnVector) -> ColumnVector {
+        for (elem, result_elem) in zip(&self.data, &mut result.data) {
+            *result_elem = *elem;
+        }
+        result
+    }
+
+    fn _sub(&self, rhs: &ColumnVector, mut result: ColumnVector) -> ColumnVector {
+        for ((lhs_elem, rhs_elem), result_elem) in zip(zip(&self.data, &rhs.data), result.data.iter_mut()) {
+            *result_elem = lhs_elem - rhs_elem;
         }
         result
     }
@@ -200,6 +241,22 @@ impl Sub<&Matrix> for &Matrix {
     }
 }
 
+impl Sub<&ColumnVector> for &ColumnVector {
+    type Output = ColumnVector;
+    fn sub(self, rhs: &ColumnVector) -> Self::Output {
+        let result = ColumnVector::new_with_elements(rhs.data.len(), 0.0);
+        self._sub(rhs, result)
+    }
+}
+
+impl Neg for &ColumnVector {
+    type Output = ColumnVector;
+    fn neg(self) -> Self::Output {
+        let result = ColumnVector::new_with_elements(self.data.len(), 0.0);
+        self._neg(result)
+    }
+}
+
 impl Mul<&ColumnVector> for &Matrix {
     type Output = ColumnVector;
 
@@ -214,6 +271,14 @@ impl Mul<&Matrix> for &ColumnVector {
     fn mul(self, rhs: &Matrix) -> Self::Output{
         let result = ColumnVector::new_with_elements(self.data.len(), 0.0);
         self._mul_matrix(rhs, result)
+    }
+}
+
+impl Add<&ColumnVector> for &ColumnVector {
+    type Output = ColumnVector;
+    fn add(self, rhs: &ColumnVector) -> Self::Output {
+        let result = ColumnVector::new_with_elements(self.data.len(), 0.0);
+        self._add(rhs, result)
     }
 }
 
