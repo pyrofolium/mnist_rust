@@ -2,12 +2,12 @@ extern crate core;
 
 use std::fmt::{Formatter};
 use std::iter::zip;
-use std::ops::{Add, Sub, Mul, Neg};
+use std::ops::{Add, Sub, Mul, Neg, AddAssign};
 
 //should be used for faster operations with a matrix.
 //This exists to allow for matrix multiplication with a vector to happen across
 //contiguous data.
-pub struct ColumnVector {
+pub struct  ColumnVector {
     pub data: Vec<f32>
 }
 
@@ -26,6 +26,14 @@ impl ColumnVector {
         let mut result = Vec::with_capacity(size);
         for _ in 0..size{
             result.push(element);
+        }
+        ColumnVector::from_vec(result)
+    }
+
+    pub fn new_with_number_generator(size:usize, element_gen: &dyn Fn(usize) -> f32) -> Self {
+        let mut result = Vec::with_capacity(size);
+        for index in 0..size{
+            result.push(element_gen(index));
         }
         ColumnVector::from_vec(result)
     }
@@ -50,7 +58,7 @@ impl ColumnVector {
         acc
     }
 
-    fn _mul_matrix(&self, matrix: &Matrix, mut result: ColumnVector) -> ColumnVector {
+    pub fn _mul_matrix<'a>(&self, matrix: &Matrix, result: &'a mut ColumnVector) -> &'a ColumnVector {
         for (result_elem, matrix_row) in zip(&mut result.data.iter_mut(), &matrix.data) {
             *result_elem = 0.0;
             for (elem_vec, matrix_row_elem) in zip(&self.data, matrix_row) {
@@ -60,23 +68,30 @@ impl ColumnVector {
         result
     }
 
-    fn _add(&self, rhs: &ColumnVector, mut result: ColumnVector) -> ColumnVector {
+    pub fn _add<'a>(&self, rhs: &ColumnVector, result: &'a mut ColumnVector) -> &'a ColumnVector {
         for ((lhs_elem, rhs_elem), result_elem) in zip(zip(&self.data, &rhs.data), result.data.iter_mut()) {
             *result_elem = lhs_elem + rhs_elem;
         }
         result
     }
 
-    fn _neg(&self, mut result: ColumnVector) -> ColumnVector {
+    pub fn _neg<'a>(&self, result: &'a mut ColumnVector) -> &'a ColumnVector {
         for (elem, result_elem) in zip(&self.data, &mut result.data) {
             *result_elem = *elem;
         }
         result
     }
 
-    fn _sub(&self, rhs: &ColumnVector, mut result: ColumnVector) -> ColumnVector {
+    pub fn _sub<'a>(&self, rhs: &ColumnVector, result: &'a mut ColumnVector) -> &'a ColumnVector {
         for ((lhs_elem, rhs_elem), result_elem) in zip(zip(&self.data, &rhs.data), result.data.iter_mut()) {
             *result_elem = lhs_elem - rhs_elem;
+        }
+        result
+    }
+
+    pub fn _hadamard_product<'a>(self, rhs: &ColumnVector, result: &'a mut ColumnVector) -> &'a ColumnVector {
+        for ((elem_lhs, elem_rhs), elem_result) in zip(zip(&self.data, &rhs.data), result.data.iter_mut()){
+            *elem_result = elem_lhs * elem_rhs;
         }
         result
     }
@@ -120,6 +135,18 @@ impl Matrix {
         Matrix::from_vec(result)
     }
 
+    pub fn new_with_number_generate(height: usize, width: usize, element_gen: &dyn Fn(usize) -> f32) -> Matrix {
+        let mut result = Vec::with_capacity(height);
+        for index in 0..height {
+            result.push(Vec::with_capacity(width));
+            for _ in 0..width {
+                let row = result.last_mut().unwrap();
+                row.push(element_gen(index));
+            }
+        }
+        Matrix::from_vec(result)
+    }
+
     pub fn is_same_shape(&self, other: &Matrix) -> bool {
         !((self.data.len() != other.data.len()) ||
             (self.data.len() > 0 && (self.data[0].len() != other.data[0].len())))
@@ -131,7 +158,7 @@ impl Matrix {
             (self.data.len() == 0 && other.data.len() == 0)
     }
 
-    fn _add(&self, rhs: &Matrix, mut result: Matrix) -> Matrix {
+    pub fn _add<'a>(&self, rhs: &Matrix, result: &'a mut Matrix) -> &'a Matrix {
         if self.is_same_shape(rhs) {
             panic!("For addition both matrices must be the same size")
         } else {
@@ -144,7 +171,7 @@ impl Matrix {
         }
     }
 
-    fn _sub(&self, rhs: &Matrix, mut result: Matrix) -> Matrix {
+    pub fn _sub<'a>(&self, rhs: &Matrix, result: &'a mut Matrix) -> &'a Matrix {
         if self.is_same_shape(rhs) {
             panic!("For subtraction both matrices must be the same size")
         } else {
@@ -157,7 +184,7 @@ impl Matrix {
         }
     }
 
-    fn _mul_num(&self, rhs: f32, mut result: Matrix) -> Matrix {
+    fn _mul_num<'a>(&self, rhs: f32, result: &'a mut Matrix) -> &'a Matrix {
         for (row_original, result_row) in zip(&self.data, result.data.iter_mut()) {
             for (original_elem, result_elem) in zip(row_original, result_row.iter_mut()) {
                 *result_elem = original_elem * rhs;
@@ -166,7 +193,7 @@ impl Matrix {
         result
     }
 
-    fn _add_num(&self, rhs: f32, mut result: Matrix) -> Matrix {
+    fn _add_num<'a>(&self, rhs: f32, result: &'a mut Matrix) -> &'a Matrix {
         for (row_original, result_row) in zip(&self.data, result.data.iter_mut()) {
             for (original_elem, result_elem) in zip(row_original, result_row.iter_mut()) {
                 *result_elem = original_elem + rhs;
@@ -175,7 +202,7 @@ impl Matrix {
         result
     }
 
-    fn _sub_num(&self, rhs: f32, mut result: Matrix) -> Matrix {
+    fn _sub_num<'a>(&self, rhs: f32, result: &'a mut Matrix) -> &'a Matrix {
         for (row_original, result_row) in zip(&self.data, result.data.iter_mut()) {
             for (original_elem, result_elem) in zip(row_original, result_row.iter_mut()) {
                 *result_elem = original_elem - rhs;
@@ -184,7 +211,7 @@ impl Matrix {
         result
     }
 
-    fn _neg(&self, mut result: Matrix) -> Matrix {
+    fn _neg<'a>(&self, result: &'a mut Matrix) -> &'a Matrix {
         for (row_original, result_row) in zip(&self.data, result.data.iter_mut()) {
             for (&original_elem, result_elem) in zip(row_original, result_row.iter_mut()) {
                 *result_elem = -original_elem;
@@ -194,7 +221,7 @@ impl Matrix {
     }
 
 
-    fn _mul(&self, rhs: &Matrix, mut result: Matrix) -> Matrix {
+    fn _mul<'a>(&self, rhs: &Matrix, result: &'a mut Matrix) -> &'a Matrix {
         if self.is_multipliable(rhs) {
             for (lhs_row_index, lhs_row) in self.data.iter().enumerate() {
                 for rhs_col_index in 0..rhs.data[0].len() {
@@ -228,32 +255,36 @@ impl std::fmt::Debug for ColumnVector {
 impl Add<&Matrix> for &Matrix {
     type Output = Matrix;
     fn add(self, rhs: &Matrix) -> Matrix {
-        let result = Matrix::new_with_elements(self.data.len(), self.data[0].len(), 0.0);
-        self._add(rhs, result)
+        let mut result = Matrix::new_with_elements(self.data.len(), self.data[0].len(), 0.0);
+        self._add(rhs, &mut result);
+        result
     }
 }
 
 impl Sub<&Matrix> for &Matrix {
     type Output = Matrix;
     fn sub(self, rhs: &Matrix) -> Self::Output {
-        let result = Matrix::new_with_elements(self.data.len(), self.data[0].len(), 0.0);
-        self._sub(rhs, result)
+        let mut result = Matrix::new_with_elements(self.data.len(), self.data[0].len(), 0.0);
+        self._sub(rhs, &mut result);
+        result
     }
 }
 
 impl Sub<&ColumnVector> for &ColumnVector {
     type Output = ColumnVector;
     fn sub(self, rhs: &ColumnVector) -> Self::Output {
-        let result = ColumnVector::new_with_elements(rhs.data.len(), 0.0);
-        self._sub(rhs, result)
+        let mut result = ColumnVector::new_with_elements(rhs.data.len(), 0.0);
+        self._sub(rhs, &mut result);
+        result
     }
 }
 
 impl Neg for &ColumnVector {
     type Output = ColumnVector;
     fn neg(self) -> Self::Output {
-        let result = ColumnVector::new_with_elements(self.data.len(), 0.0);
-        self._neg(result)
+        let mut result = ColumnVector::new_with_elements(self.data.len(), 0.0);
+        self._neg(&mut result);
+        result
     }
 }
 
@@ -261,88 +292,99 @@ impl Mul<&ColumnVector> for &Matrix {
     type Output = ColumnVector;
 
     fn mul(self, rhs: &ColumnVector) -> Self::Output {
-        let result = ColumnVector::new_with_elements(rhs.data.len(), 0.0);
-        rhs._mul_matrix(self, result)
+        let mut result = ColumnVector::new_with_elements(rhs.data.len(), 0.0);
+        rhs._mul_matrix(self, &mut result);
+        result
     }
 }
 
 impl Mul<&Matrix> for &ColumnVector {
     type Output = ColumnVector;
     fn mul(self, rhs: &Matrix) -> Self::Output{
-        let result = ColumnVector::new_with_elements(self.data.len(), 0.0);
-        self._mul_matrix(rhs, result)
+        let mut result = ColumnVector::new_with_elements(self.data.len(), 0.0);
+        self._mul_matrix(rhs, &mut result);
+        result
     }
 }
 
 impl Add<&ColumnVector> for &ColumnVector {
     type Output = ColumnVector;
     fn add(self, rhs: &ColumnVector) -> Self::Output {
-        let result = ColumnVector::new_with_elements(self.data.len(), 0.0);
-        self._add(rhs, result)
+        let mut result = ColumnVector::new_with_elements(self.data.len(), 0.0);
+        self._add(rhs, &mut result);
+        result
     }
 }
 
 impl Mul<f32> for &Matrix {
     type Output = Matrix;
     fn mul(self, rhs: f32) -> Self::Output {
-        let result = Matrix::new_with_elements(self.data.len(), self.data[0].len(), 0.0);
-        self._mul_num(rhs, result)
+        let mut result = Matrix::new_with_elements(self.data.len(), self.data[0].len(), 0.0);
+        self._mul_num(rhs, &mut result);
+        result
     }
 }
 
 impl Mul<&Matrix> for f32 {
     type Output = Matrix;
     fn mul(self, rhs: &Matrix) -> Self::Output {
-        let result = Matrix::new_with_elements(rhs.data.len(), rhs.data[0].len(), 0.0);
-        rhs._mul_num(self, result)
+        let mut result = Matrix::new_with_elements(rhs.data.len(), rhs.data[0].len(), 0.0);
+        rhs._mul_num(self, &mut result);
+        result
     }
 }
 
 impl Add<f32> for &Matrix {
     type Output = Matrix;
     fn add(self, rhs: f32) -> Self::Output {
-        let result = Matrix::new_with_elements(self.data.len(), self.data[0].len(), 0.0);
-        self._add_num(rhs, result)
+        let mut result = Matrix::new_with_elements(self.data.len(), self.data[0].len(), 0.0);
+        self._add_num(rhs, &mut result);
+        result
     }
 }
 
 impl Add<&Matrix> for f32 {
     type Output = Matrix;
     fn add(self, rhs: &Matrix) -> Self::Output {
-        let result = Matrix::new_with_elements(rhs.data.len(), rhs.data[0].len(), 0.0);
-        rhs._add_num(self, result)
+        let mut result = Matrix::new_with_elements(rhs.data.len(), rhs.data[0].len(), 0.0);
+        rhs._add_num(self, &mut result);
+        result
     }
 }
 
 impl Sub<f32> for &Matrix {
     type Output = Matrix;
     fn sub(self, rhs: f32) -> Self::Output {
-        let result = Matrix::new_with_elements(self.data.len(), self.data[0].len(), 0.0);
-        self._sub_num(rhs, result)
+        let mut result = Matrix::new_with_elements(self.data.len(), self.data[0].len(), 0.0);
+        self._sub_num(rhs, &mut result);
+        result
     }
 }
 
 impl Sub<&Matrix> for f32 {
     type Output = Matrix;
     fn sub(self, rhs: &Matrix) -> Self::Output {
-        let result = Matrix::new_with_elements(rhs.data.len(), rhs.data[0].len(), 0.0);
-        rhs._sub_num(self, result)
+        let mut result = Matrix::new_with_elements(rhs.data.len(), rhs.data[0].len(), 0.0);
+        rhs._sub_num(self, &mut result);
+        result
     }
 }
 
 impl Mul<&Matrix> for &Matrix {
     type Output = Matrix;
     fn mul(self, rhs: &Matrix) -> Self::Output {
-        let result = Matrix::new_with_elements(self.data.len(), rhs.data[0].len(), 0.0);
-        self._mul(rhs, result)
+        let mut result = Matrix::new_with_elements(self.data.len(), rhs.data[0].len(), 0.0);
+        self._mul(rhs, &mut result);
+        result
     }
 }
 
 impl Neg for &Matrix {
     type Output = Matrix;
     fn neg(self) -> Self::Output {
-        let result = Matrix::new_with_elements(self.data.len(), self.data[0].len(), 0.0);
-        self._neg(result)
+        let mut result = Matrix::new_with_elements(self.data.len(), self.data[0].len(), 0.0);
+        self._neg(&mut result);
+        result
     }
 }
 
@@ -361,6 +403,14 @@ impl PartialEq for Matrix {
                 }
             }
             true
+        }
+    }
+}
+
+impl AddAssign<&ColumnVector> for ColumnVector {
+    fn add_assign(&mut self, other: &ColumnVector) {
+        for (index, elem) in other.data.iter().enumerate() {
+            self.data[index] += elem.clone();
         }
     }
 }
