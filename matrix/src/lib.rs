@@ -74,6 +74,9 @@ impl ColumnVector {
     }
 
     pub fn _add<'a>(&self, rhs: &ColumnVector, result: &'a mut ColumnVector) -> &'a ColumnVector {
+        if self.data.len() != rhs.data.len() {
+            panic!("addition requires both vectors to be the same size.");
+        }
         for ((lhs_elem, rhs_elem), result_elem) in zip(zip(&self.data, &rhs.data), result.data.iter_mut()) {
             *result_elem = lhs_elem + rhs_elem;
         }
@@ -88,6 +91,9 @@ impl ColumnVector {
     }
 
     pub fn _sub<'a>(&self, rhs: &ColumnVector, result: &'a mut ColumnVector) -> &'a ColumnVector {
+        if self.data.len() != rhs.data.len() {
+            panic!("subtraction requires both vectors to be the same size.");
+        }
         for ((lhs_elem, rhs_elem), result_elem) in zip(zip(&self.data, &rhs.data), result.data.iter_mut()) {
             *result_elem = lhs_elem - rhs_elem;
         }
@@ -95,6 +101,9 @@ impl ColumnVector {
     }
 
     pub fn _hadamard_product<'a>(self, rhs: &ColumnVector, result: &'a mut ColumnVector) -> &'a ColumnVector {
+        if self.data.len() != rhs.data.len() {
+            panic!("the hadarmard product requires both vectors to be the same size.");
+        }
         for ((elem_lhs, elem_rhs), elem_result) in zip(zip(&self.data, &rhs.data), result.data.iter_mut()) {
             *elem_result = elem_lhs * elem_rhs;
         }
@@ -427,6 +436,9 @@ impl PartialEq for ColumnVector {
 
 impl AddAssign<&ColumnVector> for ColumnVector {
     fn add_assign(&mut self, other: &ColumnVector) {
+        if self.data.len() != other.data.len() {
+            panic!("column vectors must be equal in length.");
+        }
         for (index, elem) in other.data.iter().enumerate() {
             self.data[index] += elem.clone();
         }

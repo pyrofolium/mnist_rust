@@ -54,12 +54,14 @@ impl NeuralNetwork {
         self.activation_values.push_front(input);
     }
 
-    fn calculate_all_activation_values(&mut self, input: ColumnVector) {
+    pub fn calculate_all_activation_values(&mut self, input: ColumnVector) {
         self.activation_values[0] = input;
         for index in 0..self.weights.len() {
             NeuralNetwork::_forward_pass_one_step(self, index);
         }
     }
+
+    pub fn calculate_cost(input: ColumnVector, )
 
     pub fn new(&self, layer_sizes: &[usize], default_value: Option<f32>) -> NeuralNetwork {
         if layer_sizes.len() < 2 {
