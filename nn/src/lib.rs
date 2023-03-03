@@ -47,7 +47,7 @@ impl NeuralNetwork {
         let input = self.activation_values.pop_front().unwrap();
         let mut result = self.activation_values.pop_front().unwrap();
         let weights = &self.weights[layer_index];
-        let mut bias = &self.biases[layer_index];
+        let bias = &self.biases[layer_index];
         input._mul_matrix(weights, &mut result);
         result += bias;
         self.activation_values.push_front(result);
@@ -86,15 +86,61 @@ impl NeuralNetwork {
                 };
                 activation_values.push(ColumnVector::new_with_elements(layer_sizes[index + 1], 0.0));
             }
-            NeuralNetwork::new_from_vecs(weights, biases, activation_values)
+            NeuralNetwork::new_from_vecs(weights, Some(biases), Some(activation_values))
         }
     }
 
-    pub fn new_from_vecs(weights: Vec<Matrix>, biases: Vec<ColumnVector>, activation_values: Vec<ColumnVector>) -> NeuralNetwork {
+    pub fn new_from_vecs(weights: Vec<Matrix>, biases: Option<Vec<ColumnVector>>, activation_values: Option<Vec<ColumnVector>>) -> NeuralNetwork {
+        let amount_of_weight_matrices = weights.len();
         NeuralNetwork {
+            biases: match biases {
+                Some(value) => value,
+                None => {
+                    let mut acc: Vec<ColumnVector> = Vec::with_capacity(amount_of_weight_matrices);
+                    for matrix in &weights {
+                        acc.push(ColumnVector::new_with_elements(matrix.data[0].len(), 0.0));
+                    }
+                    acc
+                }
+            },
+            activation_values: match activation_values {
+                Some(values) => VecDeque::from(values),
+                None => {
+                    let mut acc: VecDeque<ColumnVector> = VecDeque::with_capacity(weights.len());
+                    for matrix in &weights {
+                        acc.push_back(ColumnVector::new_with_elements(matrix.data[0].len(), 0.0));
+                    }
+                    acc
+                }
+            },
             weights,
-            biases,
-            activation_values: VecDeque::from(activation_values),
         }
     }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use matrix::ColumnVector;
+    use crate::NeuralNetwork;
+    use super::Matrix;
+
+    #[test]
+    fn check_feed_forward() {
+        let amount_weight_matrices = 20;
+        let matrix_size = 5;
+        let mut weights: Vec<Matrix> = Vec::with_capacity(amount_weight_matrices);
+        for _ in 0..amount_weight_matrices {
+            weights.push(Matrix::identity(matrix_size));
+        }
+        let mut test_nn = NeuralNetwork::new_from_vecs(weights, None, None);
+        let input_vector = ColumnVector::new_with_elements(matrix_size, 1.0);
+        let input_vector2 = input_vector.clone();
+        test_nn.calculate_all_activation_values(input_vector);
+        for value in &test_nn.activation_values {
+
+        }
+
+    }
+
 }

@@ -3,36 +3,41 @@ extern crate core;
 use std::fmt::{Formatter};
 use std::iter::zip;
 use std::ops::{Add, Sub, Mul, Neg, AddAssign};
+use std::clone::Clone;
+use std::fmt;
 
 //should be used for faster operations with a matrix.
 //This exists to allow for matrix multiplication with a vector to happen across
 //contiguous data.
-pub struct  ColumnVector {
-    pub data: Vec<f32>
+#[derive(Clone)]
+pub struct ColumnVector {
+    pub data: Vec<f32>,
 }
 
+
 pub struct Matrix {
-    data: Vec<Vec<f32>>,
+    pub data: Vec<Vec<f32>>,
 }
+
 
 impl ColumnVector {
     pub fn from_vec(input: Vec<f32>) -> Self {
-        ColumnVector{
+        ColumnVector {
             data: input
         }
     }
 
     pub fn new_with_elements(size: usize, element: f32) -> Self {
         let mut result = Vec::with_capacity(size);
-        for _ in 0..size{
+        for _ in 0..size {
             result.push(element);
         }
         ColumnVector::from_vec(result)
     }
 
-    pub fn new_with_number_generator(size:usize, element_gen: &dyn Fn(usize) -> f32) -> Self {
+    pub fn new_with_number_generator(size: usize, element_gen: &dyn Fn(usize) -> f32) -> Self {
         let mut result = Vec::with_capacity(size);
-        for index in 0..size{
+        for index in 0..size {
             result.push(element_gen(index));
         }
         ColumnVector::from_vec(result)
@@ -47,7 +52,7 @@ impl ColumnVector {
     }
 
     pub fn average(&self) -> f32 {
-        self.total()/(self.data.len() as f32)
+        self.total() / (self.data.len() as f32)
     }
 
     pub fn magnitude_squared(&self) -> f32 {
@@ -90,7 +95,7 @@ impl ColumnVector {
     }
 
     pub fn _hadamard_product<'a>(self, rhs: &ColumnVector, result: &'a mut ColumnVector) -> &'a ColumnVector {
-        for ((elem_lhs, elem_rhs), elem_result) in zip(zip(&self.data, &rhs.data), result.data.iter_mut()){
+        for ((elem_lhs, elem_rhs), elem_result) in zip(zip(&self.data, &rhs.data), result.data.iter_mut()) {
             *elem_result = elem_lhs * elem_rhs;
         }
         result
@@ -104,23 +109,19 @@ impl Matrix {
         }
     }
 
-    pub fn identity(height: usize, width: usize) -> Matrix {
-        let mut result = Vec::with_capacity(height);
-        if height != height {
-            panic!("identity matrix must have equal height and width");
-        } else {
-            for row_index in 0..height {
-                result.push(Vec::with_capacity(width));
-                for col_index in 0..width {
-                    result.last_mut().unwrap().push(if col_index == row_index {
-                        1.0
-                    } else {
-                        0.0
-                    });
-                }
+    pub fn identity(size: usize) -> Matrix {
+        let mut result = Vec::with_capacity(size);
+        for row_index in 0..size {
+            result.push(Vec::with_capacity(size));
+            for col_index in 0..size {
+                result.last_mut().unwrap().push(if col_index == row_index {
+                    1.0
+                } else {
+                    0.0
+                });
             }
-            Matrix::from_vec(result)
         }
+        Matrix::from_vec(result)
     }
 
     pub fn new_with_elements(height: usize, width: usize, element: f32) -> Self {
@@ -300,7 +301,7 @@ impl Mul<&ColumnVector> for &Matrix {
 
 impl Mul<&Matrix> for &ColumnVector {
     type Output = ColumnVector;
-    fn mul(self, rhs: &Matrix) -> Self::Output{
+    fn mul(self, rhs: &Matrix) -> Self::Output {
         let mut result = ColumnVector::new_with_elements(self.data.len(), 0.0);
         self._mul_matrix(rhs, &mut result);
         result
@@ -400,6 +401,23 @@ impl PartialEq for Matrix {
                     } else {
                         return false;
                     }
+                }
+            }
+            true
+        }
+    }
+}
+
+impl PartialEq for ColumnVector {
+    fn eq(&self, other: &Self) -> bool {
+        if self.data.len() != other.data.len() {
+            false
+        } else {
+            for (&elem1, &elem2) in zip(&self.data, &other.data) {
+                if elem1 != elem2 {
+                    continue;
+                } else {
+                    return false
                 }
             }
             true
