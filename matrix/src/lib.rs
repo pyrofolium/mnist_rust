@@ -133,6 +133,10 @@ impl Matrix {
         Matrix::from_vec(result)
     }
 
+    pub fn zeros(height: usize, width: usize) -> Self {
+        Matrix::new_with_elements(height, width, 0.0)
+    }
+
     pub fn new_with_elements(height: usize, width: usize, element: f32) -> Self {
         let mut result = Vec::with_capacity(height);
         for _ in 0..height {

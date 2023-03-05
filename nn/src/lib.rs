@@ -145,13 +145,16 @@ mod tests {
         for _ in 0..amount_weight_matrices {
             weights.push(Matrix::identity(matrix_size));
         }
+        weights.push(Matrix::zeros(matrix_size, matrix_size));
+
         let mut test_nn = NeuralNetwork::new_from_vecs(weights, None, None);
         let input_vector = ColumnVector::new_with_elements(matrix_size, 1.0);
         let input_vector2 = input_vector.clone();
+        let zero_input = ColumnVector::new_with_elements(matrix_size, 0.0);
         test_nn.calculate_all_activation_values(&input_vector);
         println!("{}", test_nn);
-        for value in &test_nn.activation_values {
-            assert_eq!(value, &input_vector2);
+        for (index, value) in test_nn.activation_values.iter().enumerate() {
+            assert_eq!(value, if index != test_nn.activation_values.len() - 1 {&input_vector2} else {&zero_input});
         }
 
     }
