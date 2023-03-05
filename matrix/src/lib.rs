@@ -1,6 +1,6 @@
 extern crate core;
 
-use std::fmt::{Formatter};
+use std::fmt::{Debug, Formatter};
 use std::iter::zip;
 use std::ops::{Add, Sub, Mul, Neg, AddAssign};
 use std::clone::Clone;
@@ -250,15 +250,37 @@ impl Matrix {
     }
 }
 
-impl std::fmt::Debug for Matrix {
+impl fmt::Debug for Matrix {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        self.data.fmt(f)
+        for row in &self.data{
+            row.fmt(f).unwrap();
+            write!(f, "\n").unwrap();
+        }
+        write!(f, "\n")
     }
 }
 
-impl std::fmt::Debug for ColumnVector {
+impl fmt::Debug for ColumnVector {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        self.data.fmt(f)
+        self.data.fmt(f).unwrap();
+        write!(f, "\n")
+    }
+}
+
+impl fmt::Display for ColumnVector {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.data.fmt(f).unwrap();
+        write!(f, "\n")
+    }
+}
+
+impl fmt::Display for Matrix {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for row in &self.data{
+            row.fmt(f).unwrap();
+            write!(f, "\n").unwrap();
+        }
+        write!(f, "\n")
     }
 }
 
@@ -423,7 +445,7 @@ impl PartialEq for ColumnVector {
             false
         } else {
             for (&elem1, &elem2) in zip(&self.data, &other.data) {
-                if elem1 != elem2 {
+                if elem1 == elem2 {
                     continue;
                 } else {
                     return false

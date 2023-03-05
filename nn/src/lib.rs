@@ -1,7 +1,11 @@
 use std::collections::VecDeque;
 use std::iter::zip;
+use std::ops::Deref;
 use rand::Rng;
 use matrix::{ColumnVector, Matrix};
+use std::fmt;
+use std::fmt::Debug;
+
 
 fn sigmoid(z: f32) -> f32 {
     1.0 / (1.0 + std::f32::consts::E.powf(-z))
@@ -19,20 +23,8 @@ fn softmax(z: &ColumnVector, index: usize) -> f32 {
     z.data[index] / z.average()
 }
 
-fn mean_square_error(output_vectors: Vec<ColumnVector>, desired_output_vectors: Vec<ColumnVector>) -> f32 {
-    let mut acc: f32 = 0.0;
-    // for (output, desired) in zip(&output_vectors, &desired_output_vectors) {
-    //     acc += (output - desired).magnitude_squared();
-    // }
-
-    //faster than above
-    let mut result = ColumnVector::new_with_elements(output_vectors[0].data.len(), 0.0);
-    for (output, desired) in zip(&output_vectors, &desired_output_vectors) {
-        output._sub(desired, &mut result);
-        acc += result.magnitude_squared();
-    }
-
-    acc / (2.0 * output_vectors.len() as f32)
+fn squared_error(output_vector: &ColumnVector, desired_output: &ColumnVector) -> f32{
+    (output_vector - desired_output).magnitude_squared()
 }
 
 struct NeuralNetwork {
@@ -43,25 +35,35 @@ struct NeuralNetwork {
 
 
 impl NeuralNetwork {
-    pub fn _forward_pass_one_step<'a>(&mut self, layer_index: usize) {
+    fn _forward_pass_one_step<'a>(&mut self, layer_index: usize) {
         let input = self.activation_values.pop_front().unwrap();
         let mut result = self.activation_values.pop_front().unwrap();
         let weights = &self.weights[layer_index];
-        let bias = &self.biases[layer_index];
+        let bias = &mut self.biases[layer_index];
         input._mul_matrix(weights, &mut result);
         result += bias;
+        self.activation_values.push_back(input);
         self.activation_values.push_front(result);
-        self.activation_values.push_front(input);
     }
 
-    pub fn calculate_all_activation_values(&mut self, input: ColumnVector) {
-        self.activation_values[0] = input;
+    pub fn calculate_all_activation_values(&mut self, input: &ColumnVector) {
+        for (index, elem) in input.data.iter().enumerate() {
+            self.activation_values[0].data[index] = *elem;
+        }
+
         for index in 0..self.weights.len() {
             NeuralNetwork::_forward_pass_one_step(self, index);
         }
+        let output = self.activation_values.pop_front().unwrap();
+        self.activation_values.push_back(output);
     }
 
-    pub fn calculate_cost(input: ColumnVector, )
+    pub fn calculate_mean_square_error(mut self, inputs: &Vec<ColumnVector>, expected_outputs: &Vec<ColumnVector>) -> f32 {
+        zip(inputs, expected_outputs).map(|(input, expected)|{
+            self.calculate_all_activation_values(input);
+            (self.activation_values.back().unwrap() - expected).magnitude_squared()
+        }).reduce(|acc, x| acc + x).unwrap() / (2.0 * (expected_outputs.len() as f32))
+    }
 
     pub fn new(&self, layer_sizes: &[usize], default_value: Option<f32>) -> NeuralNetwork {
         if layer_sizes.len() < 2 {
@@ -120,6 +122,14 @@ impl NeuralNetwork {
     }
 }
 
+impl fmt::Display for NeuralNetwork {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // self.weights.fmt(f).unwrap();
+        self.activation_values.fmt(f)
+        // self.biases.fmt(f)
+    }
+}
+
 
 #[cfg(test)]
 mod tests {
@@ -138,9 +148,10 @@ mod tests {
         let mut test_nn = NeuralNetwork::new_from_vecs(weights, None, None);
         let input_vector = ColumnVector::new_with_elements(matrix_size, 1.0);
         let input_vector2 = input_vector.clone();
-        test_nn.calculate_all_activation_values(input_vector);
+        test_nn.calculate_all_activation_values(&input_vector);
+        println!("{}", test_nn);
         for value in &test_nn.activation_values {
-
+            assert_eq!(value, &input_vector2);
         }
 
     }
