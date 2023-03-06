@@ -5,6 +5,7 @@ use rand::Rng;
 use matrix::{ColumnVector, Matrix};
 use std::fmt;
 use std::fmt::Debug;
+use std::io::Write;
 use crate::SerializerIteratorNNState::{Biases, LayerAmount, LayerSizes, Weights};
 
 
@@ -28,6 +29,7 @@ fn squared_error(output_vector: &ColumnVector, desired_output: &ColumnVector) ->
     (output_vector - desired_output).magnitude_squared()
 }
 
+#[derive(PartialEq)]
 struct NeuralNetwork {
     pub weights: Vec<Matrix>,
     pub activation_values: VecDeque<ColumnVector>,
@@ -126,6 +128,16 @@ impl NeuralNetwork {
             neural_network: self,
             state: Some(LayerAmount)
         }
+    }
+
+    pub fn serialize_to_file(self, file_path: &str) -> () {
+        let mut buffer:Vec<u8> = self.serialize_iter().flat_map(|x| {
+            match x {
+                NNSerializationValues::Value(v) => v.to_be_bytes().to_vec().into_iter(),
+                NNSerializationValues::Size(v) => v.to_be_bytes().to_vec().into_iter()
+            }
+        }).collect();
+        std::fs::File::open(file_path).unwrap().write_all(&buffer).unwrap();
     }
 }
 
