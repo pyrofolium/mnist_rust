@@ -1,10 +1,11 @@
 use std::collections::VecDeque;
 use std::iter::zip;
-use std::ops::Deref;
+// use std::ops::Deref;
 use rand::Rng;
 use matrix::{ColumnVector, Matrix};
 use std::fmt;
 use std::fmt::Debug;
+use crate::SerializerIteratorNNState::{Biases, LayerAmount, LayerSizes, Weights};
 
 
 fn sigmoid(z: f32) -> f32 {
@@ -33,9 +34,9 @@ struct NeuralNetwork {
     pub biases: Vec<ColumnVector>,
 }
 
-
 impl NeuralNetwork {
     fn _forward_pass_one_step<'a>(&mut self, layer_index: usize) {
+        //The moves may still trigger memory allocation.
         let input = self.activation_values.pop_front().unwrap();
         let mut result = self.activation_values.pop_front().unwrap();
         let weights = &self.weights[layer_index];
@@ -120,6 +121,93 @@ impl NeuralNetwork {
             weights,
         }
     }
+    fn serialize_iter(&self) -> SerializerIteratorNN {
+        SerializerIteratorNN{
+            neural_network: self,
+            state: Some(LayerAmount)
+        }
+    }
+}
+
+//layer amount, layer sizes, weight, biases.
+#[derive(Clone)]
+enum SerializerIteratorNNState {
+    LayerAmount,
+    LayerSizes(usize), // layer size index (fetch it from the actual weight matrix)
+    Weights(usize, usize, usize), //weight matrix index, row, height
+    Biases(usize, usize) //bias column vector index, elem index
+}
+
+struct SerializerIteratorNN<'a> {
+    neural_network: &'a NeuralNetwork,
+    state: Option<SerializerIteratorNNState>,
+}
+
+#[derive(PartialEq, Debug)]
+enum NNSerializationValues {
+    Value(f32),
+    Size(usize),
+}
+
+impl <'a>Iterator for SerializerIteratorNN<'a> {
+    type Item = NNSerializationValues;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let current_state = self.state.clone();
+        match current_state
+        {
+            Some(state) => {
+                match state {
+                    LayerAmount => {
+                        self.state = Some(LayerSizes(0));
+                        Some(NNSerializationValues::Size(self.neural_network.biases.len() + 1))
+                    },
+                    LayerSizes(layer_size_index) if layer_size_index == 0 => {
+                        self.state = Some(LayerSizes(1));
+                        Some(NNSerializationValues::Size(self.neural_network.weights[0].data[0].len()))
+                    },
+                    LayerSizes(layer_size_index)
+                    // if layer_size_index < self.neural_network.weights.len() && layer_size_index > 0
+                    => {
+                        if layer_size_index < self.neural_network.weights.len() {
+                            self.state = Some(LayerSizes(layer_size_index + 1));
+                        } else {
+                            self.state = Some(Weights(0, 0, 0));
+                        }
+                        Some(NNSerializationValues::Size(self.neural_network.biases[layer_size_index - 1].data.len()))
+                    },
+                    Weights(index, row, col) => {
+                        let matrix = &self.neural_network.weights[index].data;
+                        let width = matrix[0].len();
+                        let height = matrix.len();
+                        if col < width - 1 {
+                            self.state = Some(Weights(index, row, col + 1));
+                        } else if row < height - 1 {
+                            self.state = Some(Weights(index, row + 1, 0));
+                        } else if index < self.neural_network.weights.len() - 1 {
+                            self.state = Some(Weights(index + 1, 0, 0));
+                        } else {
+                            self.state = Some(Biases(0, 0));
+                        }
+                        Some(NNSerializationValues::Value(matrix[row][col]))
+                    },
+                    Biases(index, elem_index) => {
+                        let vector = &self.neural_network.biases[index].data;
+                        let total = vector.len();
+                        if elem_index < total - 1 {
+                            self.state = Some(Biases(index, elem_index + 1));
+                        } else if index < vector.len() - 1 {
+                            self.state = Some(Biases(index + 1, 0));
+                        } else {
+                            self.state = None;
+                        }
+                        Some(NNSerializationValues::Value(vector[elem_index]))
+                    }
+                }
+            },
+            None => None
+        }
+    }
 }
 
 impl fmt::Display for NeuralNetwork {
@@ -134,7 +222,7 @@ impl fmt::Display for NeuralNetwork {
 #[cfg(test)]
 mod tests {
     use matrix::ColumnVector;
-    use crate::NeuralNetwork;
+    use crate::{NeuralNetwork, NNSerializationValues};
     use super::Matrix;
 
     #[test]
@@ -155,6 +243,40 @@ mod tests {
         println!("{}", test_nn);
         for (index, value) in test_nn.activation_values.iter().enumerate() {
             assert_eq!(value, if index != test_nn.activation_values.len() - 1 {&input_vector2} else {&zero_input});
+        }
+    }
+
+    #[test]
+    fn check_serialization_and_deserialization(){
+        let m1 = Matrix::identity(2);
+        let m2 = Matrix::from_vec(m1.data.clone());
+        let b1 = ColumnVector::from_vec(vec![1.0, 1.0]);
+        let b2 = ColumnVector::from_vec(b1.data.clone());
+        let nn = NeuralNetwork::new_from_vecs(vec![m1, m2], Some(vec![b1, b2]), None);
+        let test_match = vec![NNSerializationValues::Size(3), //layers
+                              NNSerializationValues::Size(2), //size of first layer
+                              NNSerializationValues::Size(2), //size of second layer
+                              NNSerializationValues::Size(2), //size of third layer
+                              NNSerializationValues::Value(1.0),
+                              NNSerializationValues::Value(0.0),
+                              NNSerializationValues::Value(0.0),
+                              NNSerializationValues::Value(1.0),
+                              NNSerializationValues::Value(1.0),
+                              NNSerializationValues::Value(0.0),
+                              NNSerializationValues::Value(0.0),
+                              NNSerializationValues::Value(1.0),
+                              NNSerializationValues::Value(1.0),
+                              NNSerializationValues::Value(1.0),
+                              NNSerializationValues::Value(1.0),
+                              NNSerializationValues::Value(1.0)];
+
+        for (index, elem) in nn.serialize_iter().enumerate() {
+            assert_eq!(test_match[index], elem);
+            let v = match elem {
+                NNSerializationValues::Value(v) => v,
+                NNSerializationValues::Size(v) => v as f32
+            };
+            println!("{}", v);
         }
 
     }
