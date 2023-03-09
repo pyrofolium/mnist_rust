@@ -370,6 +370,6 @@ mod tests {
         }
         let iter = Box::new(test_match.into_iter());
         let nn2 = NeuralNetwork::create_nn_from_deserialized_values(iter);
-        assert_eq!(nn, nn2);
+        assert_eq!(nn, nn2); //failure
     }
 }
