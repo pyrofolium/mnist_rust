@@ -173,8 +173,12 @@ impl NeuralNetwork {
         let (mut weights, mut biases): (Vec<Matrix>, Vec<ColumnVector>) = data_iterator
             .by_ref()
             .take(layer_amount as usize)
-            .tuples()
-            .map(|(h, w)| {
+            .collect::<Vec<NNSerializationValues>>()[..] //this is an allocation. Slowdown.
+            .windows(2)
+            .take((layer_amount - 1) as usize)
+            .map(|x| {
+                let h = x[0];
+                let w = x[1];
                 match (h, w) {
                     (NNSerializationValues::Size(h), NNSerializationValues::Size(w)) => {
                         (Matrix::new_with_elements(h as usize, w as usize, 0.0),
@@ -185,7 +189,7 @@ impl NeuralNetwork {
                 }
             }).unzip();
 
-        let mut values = data_iterator.map(|x| {
+        let values = data_iterator.map(|x| {
             match x {
                 NNSerializationValues::Value(v) => v,
                 _ => panic!("wrong type!")
@@ -200,7 +204,9 @@ impl NeuralNetwork {
         zip(weight_iter.chain(bias_iter), values).for_each(|(elem, v)| {
             *elem = v
         });
-        let activation_values: VecDeque<ColumnVector> = biases.iter().map(|x| {x.clone()}).collect();
+        let activation_values: VecDeque<ColumnVector> = biases.iter()
+            .map(|x| ColumnVector::new_with_elements(x.data.len(), 0.0))
+            .collect();
         NeuralNetwork {
             weights,
             biases,
@@ -209,7 +215,7 @@ impl NeuralNetwork {
     }
 
     fn deserialize_from_file(self, file_path: &str) -> NeuralNetwork {
-        let mut data_iterator = NeuralNetwork::deserialize_from_file_to_values(file_path);
+        let data_iterator = NeuralNetwork::deserialize_from_file_to_values(file_path);
         NeuralNetwork::create_nn_from_deserialized_values(data_iterator)
     }
 }
