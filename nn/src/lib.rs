@@ -30,7 +30,7 @@ fn squared_error(output_vector: &ColumnVector, desired_output: &ColumnVector) ->
     (output_vector - desired_output).magnitude_squared()
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Debug)]
 struct NeuralNetwork {
     pub weights: Vec<Matrix>,
     pub activation_values: VecDeque<ColumnVector>,
@@ -141,7 +141,7 @@ impl NeuralNetwork {
         std::fs::File::open(file_path).unwrap().write_all(&buffer).unwrap();
     }
 
-    fn _deserialize_from_file(file_path: &str) -> Box<dyn Iterator<Item=NNSerializationValues>> {
+    pub fn deserialize_from_file_to_values(file_path: &str) -> Box<dyn Iterator<Item=NNSerializationValues>> {
         let file = std::fs::File::open(file_path).unwrap();
         let reader = BufReader::new(file);
         // layer_amount_bytes: Vec<u8> = vec::Vec::with_capacity(2);
@@ -165,7 +165,7 @@ impl NeuralNetwork {
             .map(|x| NNSerializationValues::Value(x));
         Box::new([NNSerializationValues::Size(amount_of_layers)].into_iter().chain(layer_sizes.into_iter()).chain(data))
     }
-    fn _create_nn_from_deserialized_values(mut data_iterator: Box<dyn Iterator<Item=NNSerializationValues>>) -> NeuralNetwork {
+    pub fn create_nn_from_deserialized_values(mut data_iterator: Box<dyn Iterator<Item=NNSerializationValues>>) -> NeuralNetwork {
         let layer_amount = match data_iterator.next().unwrap() {
             NNSerializationValues::Size(v) => v,
             _ => panic!("wrong type")
@@ -209,8 +209,8 @@ impl NeuralNetwork {
     }
 
     fn deserialize_from_file(self, file_path: &str) -> NeuralNetwork {
-        let mut data_iterator = NeuralNetwork::_deserialize_from_file(file_path);
-        NeuralNetwork::_create_nn_from_deserialized_values(data_iterator)
+        let mut data_iterator = NeuralNetwork::deserialize_from_file_to_values(file_path);
+        NeuralNetwork::create_nn_from_deserialized_values(data_iterator)
     }
 }
 
@@ -368,5 +368,8 @@ mod tests {
             };
             println!("{}", v);
         }
+        let iter = Box::new(test_match.into_iter());
+        let nn2 = NeuralNetwork::create_nn_from_deserialized_values(iter);
+        assert_eq!(nn, nn2);
     }
 }
