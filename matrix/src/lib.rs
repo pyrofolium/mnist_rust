@@ -1,7 +1,7 @@
 extern crate core;
 
 use std::fmt::{Debug, Formatter};
-use std::iter::zip;
+use std::iter::{zip};
 use std::ops::{Add, Sub, Mul, Neg, AddAssign};
 use std::clone::Clone;
 use std::fmt;
@@ -470,6 +470,7 @@ impl AddAssign<&ColumnVector> for ColumnVector {
         }
     }
 }
+
 
 #[cfg(test)]
 mod tests {

@@ -1,12 +1,13 @@
 use std::collections::VecDeque;
-use std::iter::zip;
+use std::iter::{zip};
 // use std::ops::Deref;
 use rand::Rng;
 use matrix::{ColumnVector, Matrix};
-use std::fmt;
+use std::{fmt};
 use std::fmt::Debug;
-use std::io::Write;
+use std::io::{BufReader, Read, Write};
 use crate::SerializerIteratorNNState::{Biases, LayerAmount, LayerSizes, Weights};
+use itertools::{Itertools};
 
 
 fn sigmoid(z: f32) -> f32 {
@@ -25,7 +26,7 @@ fn softmax(z: &ColumnVector, index: usize) -> f32 {
     z.data[index] / z.average()
 }
 
-fn squared_error(output_vector: &ColumnVector, desired_output: &ColumnVector) -> f32{
+fn squared_error(output_vector: &ColumnVector, desired_output: &ColumnVector) -> f32 {
     (output_vector - desired_output).magnitude_squared()
 }
 
@@ -62,7 +63,7 @@ impl NeuralNetwork {
     }
 
     pub fn calculate_mean_square_error(mut self, inputs: &Vec<ColumnVector>, expected_outputs: &Vec<ColumnVector>) -> f32 {
-        zip(inputs, expected_outputs).map(|(input, expected)|{
+        zip(inputs, expected_outputs).map(|(input, expected)| {
             self.calculate_all_activation_values(input);
             (self.activation_values.back().unwrap() - expected).magnitude_squared()
         }).reduce(|acc, x| acc + x).unwrap() / (2.0 * (expected_outputs.len() as f32))
@@ -124,14 +125,14 @@ impl NeuralNetwork {
         }
     }
     fn serialize_iter(&self) -> SerializerIteratorNN {
-        SerializerIteratorNN{
+        SerializerIteratorNN {
             neural_network: self,
-            state: Some(LayerAmount)
+            state: Some(LayerAmount),
         }
     }
 
     pub fn serialize_to_file(self, file_path: &str) -> () {
-        let mut buffer:Vec<u8> = self.serialize_iter().flat_map(|x| {
+        let buffer: Vec<u8> = self.serialize_iter().flat_map(|x| {
             match x {
                 NNSerializationValues::Value(v) => v.to_be_bytes().to_vec().into_iter(),
                 NNSerializationValues::Size(v) => v.to_be_bytes().to_vec().into_iter()
@@ -139,29 +140,96 @@ impl NeuralNetwork {
         }).collect();
         std::fs::File::open(file_path).unwrap().write_all(&buffer).unwrap();
     }
+
+    fn _deserialize_from_file(self, file_path: &str) -> Box<dyn Iterator<Item=NNSerializationValues>> {
+        let file = std::fs::File::open(file_path).unwrap();
+        let reader = BufReader::new(file);
+        // layer_amount_bytes: Vec<u8> = vec::Vec::with_capacity(2);
+        let mut byte_iterator = reader.bytes();
+        let amount_of_layers = u16::from_be_bytes([byte_iterator.next().unwrap().unwrap(), byte_iterator.next().unwrap().unwrap()]);
+        let layer_sizes: Vec<NNSerializationValues> = byte_iterator
+            .by_ref()
+            .map(|x| x.unwrap())
+            .tuples()
+            .step_by(2)
+            .map(|(w, x)| u16::from_be_bytes([w, x]))
+            .take(amount_of_layers as usize)
+            .map(|x| NNSerializationValues::Size(x)).collect();
+        // .copied();
+        let data = byte_iterator
+            //     .skip(2 + amount_of_layers as usize * 2)
+            .map(|x| x.unwrap())
+            .step_by(4)
+            .tuple_windows()
+            .map(|(w, x, y, z)| f32::from_be_bytes([w, x, y, z]))
+            .map(|x| NNSerializationValues::Value(x));
+        Box::new([NNSerializationValues::Size(amount_of_layers)].into_iter().chain(layer_sizes.into_iter()).chain(data))
+
+
+    }
+
+    fn deserialize_from_file(self, file_path: &str) {
+        let mut data_iterator = self._deserialize_from_file(file_path);
+        let layer_amount = match data_iterator.next().unwrap() {
+            NNSerializationValues::Size(v) => v,
+            _ => panic!("wrong type")
+        };
+        let (mut weights, mut biases): (Vec<Matrix>, Vec<ColumnVector>) = data_iterator
+            .by_ref()
+            .take(layer_amount as usize)
+            .tuples()
+            .map(|(h, w)| {
+                match (h, w) {
+                    (NNSerializationValues::Size(h), NNSerializationValues::Size(w)) => {
+                        (Matrix::new_with_elements(h as usize, w as usize, 0.0),
+                         ColumnVector::new_with_elements(w as usize, 0.0))
+                    }
+                    _ => panic!("Wrong type")
+                }
+        }).unzip();
+
+        let mut values = data_iterator.map(|x| {
+            match x {
+                NNSerializationValues::Value(v) => v,
+                _ => panic!("wrong type!")
+            }
+        });
+
+        let weight_iter = weights.iter_mut().flat_map(|x|{
+            x.data.iter_mut()
+        }).flat_map(|x| x.iter_mut());
+        let bias_iter = biases.iter_mut().flat_map(|x| x.data.iter_mut());
+
+        zip(weight_iter.chain(bias_iter), values).for_each(|(elem, v)|{
+            *elem = v
+        })
+    }
 }
 
 //layer amount, layer sizes, weight, biases.
 #[derive(Clone)]
 enum SerializerIteratorNNState {
     LayerAmount,
-    LayerSizes(usize), // layer size index (fetch it from the actual weight matrix)
-    Weights(usize, usize, usize), //weight matrix index, row, height
-    Biases(usize, usize) //bias column vector index, elem index
+    LayerSizes(u16),
+    // layer size index (fetch it from the actual weight matrix)
+    Weights(u16, u16, u16),
+    //weight matrix index, row, height
+    Biases(u16, u16), //bias column vector index, elem index
 }
 
+#[derive(Clone)]
 struct SerializerIteratorNN<'a> {
     neural_network: &'a NeuralNetwork,
     state: Option<SerializerIteratorNNState>,
 }
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Copy, Clone)]
 enum NNSerializationValues {
     Value(f32),
-    Size(usize),
+    Size(u16),
 }
 
-impl <'a>Iterator for SerializerIteratorNN<'a> {
+impl<'a> Iterator for SerializerIteratorNN<'a> {
     type Item = NNSerializationValues;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -172,51 +240,51 @@ impl <'a>Iterator for SerializerIteratorNN<'a> {
                 match state {
                     LayerAmount => {
                         self.state = Some(LayerSizes(0));
-                        Some(NNSerializationValues::Size(self.neural_network.biases.len() + 1))
-                    },
+                        Some(NNSerializationValues::Size((self.neural_network.biases.len() + 1) as u16))
+                    }
                     LayerSizes(layer_size_index) if layer_size_index == 0 => {
                         self.state = Some(LayerSizes(1));
-                        Some(NNSerializationValues::Size(self.neural_network.weights[0].data[0].len()))
-                    },
+                        Some(NNSerializationValues::Size(self.neural_network.weights[0].data[0].len() as u16))
+                    }
                     LayerSizes(layer_size_index)
                     // if layer_size_index < self.neural_network.weights.len() && layer_size_index > 0
                     => {
-                        if layer_size_index < self.neural_network.weights.len() {
+                        if layer_size_index < self.neural_network.weights.len() as u16 {
                             self.state = Some(LayerSizes(layer_size_index + 1));
                         } else {
                             self.state = Some(Weights(0, 0, 0));
                         }
-                        Some(NNSerializationValues::Size(self.neural_network.biases[layer_size_index - 1].data.len()))
-                    },
+                        Some(NNSerializationValues::Size(self.neural_network.biases[(layer_size_index - 1) as usize].data.len() as u16))
+                    }
                     Weights(index, row, col) => {
-                        let matrix = &self.neural_network.weights[index].data;
+                        let matrix = &self.neural_network.weights[index as usize].data;
                         let width = matrix[0].len();
                         let height = matrix.len();
-                        if col < width - 1 {
+                        if col < (width - 1) as u16 {
                             self.state = Some(Weights(index, row, col + 1));
-                        } else if row < height - 1 {
+                        } else if row < (height - 1) as u16 {
                             self.state = Some(Weights(index, row + 1, 0));
-                        } else if index < self.neural_network.weights.len() - 1 {
+                        } else if index < (self.neural_network.weights.len() - 1) as u16 {
                             self.state = Some(Weights(index + 1, 0, 0));
                         } else {
                             self.state = Some(Biases(0, 0));
                         }
-                        Some(NNSerializationValues::Value(matrix[row][col]))
-                    },
+                        Some(NNSerializationValues::Value(matrix[row as usize][col as usize]))
+                    }
                     Biases(index, elem_index) => {
-                        let vector = &self.neural_network.biases[index].data;
+                        let vector = &self.neural_network.biases[index as usize].data;
                         let total = vector.len();
-                        if elem_index < total - 1 {
+                        if elem_index < (total - 1) as u16 {
                             self.state = Some(Biases(index, elem_index + 1));
-                        } else if index < vector.len() - 1 {
+                        } else if index < (vector.len() - 1) as u16 {
                             self.state = Some(Biases(index + 1, 0));
                         } else {
                             self.state = None;
                         }
-                        Some(NNSerializationValues::Value(vector[elem_index]))
+                        Some(NNSerializationValues::Value(vector[elem_index as usize]))
                     }
                 }
-            },
+            }
             None => None
         }
     }
@@ -254,12 +322,12 @@ mod tests {
         test_nn.calculate_all_activation_values(&input_vector);
         println!("{}", test_nn);
         for (index, value) in test_nn.activation_values.iter().enumerate() {
-            assert_eq!(value, if index != test_nn.activation_values.len() - 1 {&input_vector2} else {&zero_input});
+            assert_eq!(value, if index != test_nn.activation_values.len() - 1 { &input_vector2 } else { &zero_input });
         }
     }
 
     #[test]
-    fn check_serialization_and_deserialization(){
+    fn check_serialization_and_deserialization() {
         let m1 = Matrix::identity(2);
         let m2 = Matrix::from_vec(m1.data.clone());
         let b1 = ColumnVector::from_vec(vec![1.0, 1.0]);
@@ -290,7 +358,5 @@ mod tests {
             };
             println!("{}", v);
         }
-
     }
-
 }
