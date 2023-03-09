@@ -141,7 +141,7 @@ impl NeuralNetwork {
         std::fs::File::open(file_path).unwrap().write_all(&buffer).unwrap();
     }
 
-    fn _deserialize_from_file(self, file_path: &str) -> Box<dyn Iterator<Item=NNSerializationValues>> {
+    fn _deserialize_from_file(file_path: &str) -> Box<dyn Iterator<Item=NNSerializationValues>> {
         let file = std::fs::File::open(file_path).unwrap();
         let reader = BufReader::new(file);
         // layer_amount_bytes: Vec<u8> = vec::Vec::with_capacity(2);
@@ -164,12 +164,8 @@ impl NeuralNetwork {
             .map(|(w, x, y, z)| f32::from_be_bytes([w, x, y, z]))
             .map(|x| NNSerializationValues::Value(x));
         Box::new([NNSerializationValues::Size(amount_of_layers)].into_iter().chain(layer_sizes.into_iter()).chain(data))
-
-
     }
-
-    fn deserialize_from_file(self, file_path: &str) {
-        let mut data_iterator = self._deserialize_from_file(file_path);
+    fn _create_nn_from_deserialized_values(mut data_iterator: Box<dyn Iterator<Item=NNSerializationValues>>) -> NeuralNetwork {
         let layer_amount = match data_iterator.next().unwrap() {
             NNSerializationValues::Size(v) => v,
             _ => panic!("wrong type")
@@ -182,11 +178,12 @@ impl NeuralNetwork {
                 match (h, w) {
                     (NNSerializationValues::Size(h), NNSerializationValues::Size(w)) => {
                         (Matrix::new_with_elements(h as usize, w as usize, 0.0),
-                         ColumnVector::new_with_elements(w as usize, 0.0))
+                         ColumnVector::new_with_elements(w as usize, 0.0),
+                        )
                     }
                     _ => panic!("Wrong type")
                 }
-        }).unzip();
+            }).unzip();
 
         let mut values = data_iterator.map(|x| {
             match x {
@@ -195,16 +192,29 @@ impl NeuralNetwork {
             }
         });
 
-        let weight_iter = weights.iter_mut().flat_map(|x|{
+        let weight_iter = weights.iter_mut().flat_map(|x| {
             x.data.iter_mut()
         }).flat_map(|x| x.iter_mut());
         let bias_iter = biases.iter_mut().flat_map(|x| x.data.iter_mut());
 
-        zip(weight_iter.chain(bias_iter), values).for_each(|(elem, v)|{
+        zip(weight_iter.chain(bias_iter), values).for_each(|(elem, v)| {
             *elem = v
-        })
+        });
+        let activation_values: VecDeque<ColumnVector> = biases.iter().map(|x| {x.clone()}).collect();
+        NeuralNetwork {
+            weights,
+            biases,
+            activation_values
+        }
+    }
+
+    fn deserialize_from_file(self, file_path: &str) -> NeuralNetwork {
+        let mut data_iterator = NeuralNetwork::_deserialize_from_file(file_path);
+        NeuralNetwork::_create_nn_from_deserialized_values(data_iterator)
     }
 }
+
+
 
 //layer amount, layer sizes, weight, biases.
 #[derive(Clone)]
