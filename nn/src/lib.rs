@@ -134,7 +134,11 @@ impl NeuralNetwork {
     pub fn serialize_to_file(self, file_path: &str) -> () {
         let buffer: Vec<u8> = self.serialize_iter().flat_map(|x| {
             match x {
-                NNSerializationValues::Value(v) => v.to_be_bytes().to_vec().into_iter(),
+                NNSerializationValues::Value(v) => {
+                    let x = v.to_be_bytes();
+                    let r = x.to_vec();
+                    r.into_iter()
+                }
                 NNSerializationValues::Size(v) => v.to_be_bytes().to_vec().into_iter()
             }
         }).collect();
@@ -218,7 +222,7 @@ impl NeuralNetwork {
         NeuralNetwork {
             weights,
             biases,
-            activation_values
+            activation_values,
         }
     }
 
