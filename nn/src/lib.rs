@@ -138,7 +138,13 @@ impl NeuralNetwork {
                 NNSerializationValues::Size(v) => v.to_be_bytes().to_vec().into_iter()
             }
         }).collect();
-        std::fs::File::open(file_path).unwrap().write_all(&buffer).unwrap();
+        std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .open(file_path)
+            .unwrap()
+            .write_all(&buffer)
+            .unwrap();
     }
 
     pub fn deserialize_from_file_to_values(file_path: &str) -> Box<dyn Iterator<Item=NNSerializationValues>> {
@@ -151,7 +157,7 @@ impl NeuralNetwork {
             .by_ref()
             .map(|x| x.unwrap())
             .tuples()
-            .step_by(2)
+            .step_by(1)
             .map(|(w, x)| u16::from_be_bytes([w, x]))
             .take(amount_of_layers as usize)
             .map(|x| NNSerializationValues::Size(x)).collect();
@@ -159,9 +165,11 @@ impl NeuralNetwork {
         let data = byte_iterator
             //     .skip(2 + amount_of_layers as usize * 2)
             .map(|x| x.unwrap())
-            .step_by(4)
             .tuple_windows()
-            .map(|(w, x, y, z)| f32::from_be_bytes([w, x, y, z]))
+            .step_by(4)
+            .map(|(w, x, y, z)| {
+                f32::from_be_bytes([w, x, y, z])
+            })
             .map(|x| NNSerializationValues::Value(x));
         Box::new([NNSerializationValues::Size(amount_of_layers)].into_iter().chain(layer_sizes.into_iter()).chain(data))
     }
@@ -214,12 +222,11 @@ impl NeuralNetwork {
         }
     }
 
-    fn deserialize_from_file(self, file_path: &str) -> NeuralNetwork {
+    fn deserialize_from_file(file_path: &str) -> NeuralNetwork {
         let data_iterator = NeuralNetwork::deserialize_from_file_to_values(file_path);
         NeuralNetwork::create_nn_from_deserialized_values(data_iterator)
     }
 }
-
 
 
 //layer amount, layer sizes, weight, biases.
@@ -374,8 +381,18 @@ mod tests {
             };
             println!("{}", v);
         }
-        let iter = Box::new(test_match.into_iter());
+        let iter = Box::new(test_match.clone().into_iter());
         let nn2 = NeuralNetwork::create_nn_from_deserialized_values(iter);
-        assert_eq!(nn, nn2); //failure
+
+        assert_eq!(nn, nn2);
+
+        nn.serialize_to_file("test.nn");
+        // let nn3 = NeuralNetwork::deserialize_from_file("test.nn");
+        let matchvals = NeuralNetwork::deserialize_from_file_to_values("test.nn");
+        let matchvals2 = NeuralNetwork::deserialize_from_file_to_values("test.nn");
+        let see: Vec<NNSerializationValues> = matchvals2.collect();
+        let nn3 = NeuralNetwork::create_nn_from_deserialized_values(matchvals);
+        let nn4 = NeuralNetwork::create_nn_from_deserialized_values(Box::new(test_match.into_iter()));
+        assert_eq!(nn3, nn4);
     }
 }
