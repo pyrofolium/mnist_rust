@@ -4,7 +4,9 @@ use std::fmt::{Debug, Formatter};
 use std::iter::{zip};
 use std::ops::{Add, Sub, Mul, Neg, AddAssign};
 use std::clone::Clone;
-use std::fmt;
+use std::{fmt, vec};
+use rand_distr::{Distribution, Normal, NormalError};
+use rand::thread_rng;
 
 //should be used for faster operations with a matrix.
 //This exists to allow for matrix multiplication with a vector to happen across
@@ -21,6 +23,18 @@ pub struct Matrix {
 
 
 impl ColumnVector {
+    pub fn _apply(&self, f: fn(f32) ->f32, result: &mut ColumnVector){
+        zip(self.data.iter(),result.data.iter_mut()).for_each(|(x, y)|{
+            *y = f(*x);
+        });
+    }
+
+    pub fn apply(&self, f: fn(f32) -> f32) -> ColumnVector {
+        let mut result = ColumnVector::new_with_elements(self.data.len(), 0.0);
+        self._apply(f, &mut result);
+        result
+    }
+
     pub fn from_vec(input: Vec<f32>) -> Self {
         ColumnVector {
             data: input
@@ -35,12 +49,15 @@ impl ColumnVector {
         ColumnVector::from_vec(result)
     }
 
-    pub fn new_with_number_generator(size: usize, element_gen: &dyn Fn(usize) -> f32) -> Self {
-        let mut result = Vec::with_capacity(size);
-        for index in 0..size {
-            result.push(element_gen(index));
-        }
-        ColumnVector::from_vec(result)
+
+    pub fn new_with_random_number(size: usize) -> Self {
+        let normal = Normal::new(0.0, 1.0).unwrap();
+        let mut rng = thread_rng();
+        let mut data = vec::Vec::with_capacity(size);
+        (0..size).for_each(|_|{
+            data.push(normal.sample(&mut rng))
+        });
+        ColumnVector::from_vec(data)
     }
 
     pub fn total(&self) -> f32 {
@@ -118,6 +135,17 @@ impl Matrix {
         }
     }
 
+    pub fn transpose(self) -> Self{
+        let mut data = Vec::with_capacity(self.data[0].len());
+        (0..self.data[0].len()).for_each(|_|{
+            data.push(Vec::with_capacity(self.data.len()));
+        });
+        zip((0..self.data.len()), (0..self.data[0].len())).for_each(|(row, col)|{
+            data[col][row] = self.data[row][col];
+        });
+        Matrix::from_vec(data)
+    }
+
     pub fn identity(size: usize) -> Matrix {
         let mut result = Vec::with_capacity(size);
         for row_index in 0..size {
@@ -149,7 +177,7 @@ impl Matrix {
         Matrix::from_vec(result)
     }
 
-    pub fn new_with_number_generate(height: usize, width: usize, element_gen: &dyn Fn(usize) -> f32) -> Matrix {
+    pub fn new_with_number_generator(height: usize, width: usize, element_gen: fn(usize) -> f32) -> Matrix {
         let mut result = Vec::with_capacity(height);
         for index in 0..height {
             result.push(Vec::with_capacity(width));
@@ -159,6 +187,20 @@ impl Matrix {
             }
         }
         Matrix::from_vec(result)
+    }
+
+    pub fn new_with_random_number(height: usize, width: usize) -> Self {
+        let normal = Normal::new(0.0, 1.0).unwrap();
+        let mut rng = thread_rng();
+        let mut rows = Vec::with_capacity(height);
+        [..height].iter_mut().for_each(|_|{
+            let mut row = Vec::with_capacity(width);
+            [..width].iter().for_each(|_|{
+                row.push(normal.sample(&mut rng));
+            });
+            rows.push(row);
+        });
+        Matrix::from_vec(rows)
     }
 
     pub fn is_same_shape(&self, other: &Matrix) -> bool {
@@ -510,7 +552,7 @@ mod tests {
 
     #[test]
     fn test_multiplication() {
-        let identity = Matrix::identity(4, 4);
+        let identity = Matrix::identity(4);
         let identity2 = &identity * &identity;
         let mat_x = Matrix::from_vec(
             vec![

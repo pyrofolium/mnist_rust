@@ -8,10 +8,28 @@ use std::fmt::Debug;
 use std::io::{BufReader, Read, Write};
 use crate::SerializerIteratorNNState::{Biases, LayerAmount, LayerSizes, Weights};
 use itertools::{Itertools};
+use rand::thread_rng;
+use rand::seq::SliceRandom;
 
 
 fn sigmoid(z: f32) -> f32 {
     1.0 / (1.0 + std::f32::consts::E.powf(-z))
+}
+
+fn cost_deriv(Y: &ColumnVector, A: &ColumnVector) -> ColumnVector {
+    Y - A
+}
+
+fn relu_deriv(z: f32) -> f32 {
+    if z < 0.0 {
+        0.0
+    } else {
+        1.0
+    }
+}
+
+fn relu_deriv_vec(z: &ColumnVector) -> ColumnVector {
+    z.apply(|x| { relu(x) })
 }
 
 fn relu(z: f32) -> f32 {
@@ -22,18 +40,27 @@ fn relu(z: f32) -> f32 {
     }
 }
 
+fn relu_vec(z: &ColumnVector) -> ColumnVector {
+    let mut inner_vec = z.data.clone();
+    inner_vec.iter_mut().for_each(|x| {
+        *x = relu(*x);
+    });
+    ColumnVector::from_vec(inner_vec)
+}
+
 fn softmax(z: &ColumnVector, index: usize) -> f32 {
     z.data[index] / z.average()
 }
 
 fn squared_error(output_vector: &ColumnVector, desired_output: &ColumnVector) -> f32 {
-    (output_vector - desired_output).magnitude_squared()
+    (output_vector - desired_output).magnitude_squared() * 0.5
 }
 
 #[derive(PartialEq, Debug)]
 struct NeuralNetwork {
     pub weights: Vec<Matrix>,
     pub activation_values: VecDeque<ColumnVector>,
+    pub z_values: VecDeque<ColumnVector>,
     pub biases: Vec<ColumnVector>,
 }
 
@@ -41,19 +68,31 @@ impl NeuralNetwork {
     fn _forward_pass_one_step<'a>(&mut self, layer_index: usize) {
         //The moves may still trigger memory allocation.
         let input = self.activation_values.pop_front().unwrap();
-        let mut result = self.activation_values.pop_front().unwrap();
+        let mut z_values = self.z_values.pop_front().unwrap();
+        let mut activations = self.activation_values.pop_front().unwrap();
         let weights = &self.weights[layer_index];
         let bias = &mut self.biases[layer_index];
-        input._mul_matrix(weights, &mut result);
-        result += bias;
+        input._mul_matrix(weights, &mut z_values);
+        z_values += bias;
+        z_values._apply(relu, &mut activations);
         self.activation_values.push_back(input);
-        self.activation_values.push_front(result);
+        self.activation_values.push_front(activations);
+        self.z_values.push_back(z_values);
     }
+
+    // fn _backwords_pass_first_step(&mut self, input_vector: &ColumnVector, desired_vector: &ColumnVector) -> (Matrix, ColumnVector) {
+    //     if layer_index == self.weights.len() {
+    //         cost_deriv(self.activation_values.iter().last().unwrap(), desired_vector)*relu_deriv(
+    //     } else {
+    //
+    //     }
+    // }
 
     pub fn calculate_all_activation_values(&mut self, input: &ColumnVector) {
         for (index, elem) in input.data.iter().enumerate() {
             self.activation_values[0].data[index] = *elem;
         }
+
 
         for index in 0..self.weights.len() {
             NeuralNetwork::_forward_pass_one_step(self, index);
@@ -76,7 +115,9 @@ impl NeuralNetwork {
             let mut weights = Vec::with_capacity(layer_sizes.len() - 1);
             let mut biases = Vec::with_capacity(layer_sizes.len() - 1);
             let mut activation_values = Vec::with_capacity(layer_sizes.len());
+            let mut z_values = Vec::with_capacity(layer_sizes.len());
             activation_values.push(ColumnVector::new_with_elements(layer_sizes[0], 0.0));
+
             for (index, &size) in layer_sizes[0..layer_sizes.len() - 1].iter().enumerate() {
                 match default_value {
                     Some(value) => {
@@ -84,21 +125,18 @@ impl NeuralNetwork {
                         biases.push(ColumnVector::new_with_elements(layer_sizes[index + 1], value));
                     }
                     None => {
-                        let element_gen = |_| {
-                            let mut rng = rand::thread_rng();
-                            rng.gen()
-                        };
-                        weights.push(Matrix::new_with_number_generate(layer_sizes[index + 1], size, &element_gen));
-                        biases.push(ColumnVector::new_with_number_generator(layer_sizes[index + 1], &element_gen));
+                        weights.push(Matrix::new_with_random_number(layer_sizes[index + 1], size));
+                        biases.push(ColumnVector::new_with_random_number(layer_sizes[index + 1]));
                     }
                 };
                 activation_values.push(ColumnVector::new_with_elements(layer_sizes[index + 1], 0.0));
+                z_values.push(ColumnVector::new_with_elements(layer_sizes[index + 1], 0.0));
             }
-            NeuralNetwork::new_from_vecs(weights, Some(biases), Some(activation_values))
+            NeuralNetwork::new_from_vecs(weights, Some(biases), Some(activation_values), Some(z_values))
         }
     }
 
-    pub fn new_from_vecs(weights: Vec<Matrix>, biases: Option<Vec<ColumnVector>>, activation_values: Option<Vec<ColumnVector>>) -> NeuralNetwork {
+    pub fn new_from_vecs(weights: Vec<Matrix>, biases: Option<Vec<ColumnVector>>, activation_values: Option<Vec<ColumnVector>>, z_values: Option<Vec<ColumnVector>>) -> NeuralNetwork {
         let amount_of_weight_matrices = weights.len();
         NeuralNetwork {
             biases: match biases {
@@ -112,6 +150,16 @@ impl NeuralNetwork {
                 }
             },
             activation_values: match activation_values {
+                Some(values) => VecDeque::from(values),
+                None => {
+                    let mut acc: VecDeque<ColumnVector> = VecDeque::with_capacity(weights.len());
+                    for matrix in &weights {
+                        acc.push_back(ColumnVector::new_with_elements(matrix.data[0].len(), 0.0));
+                    }
+                    acc
+                }
+            },
+            z_values: match z_values {
                 Some(values) => VecDeque::from(values),
                 None => {
                     let mut acc: VecDeque<ColumnVector> = VecDeque::with_capacity(weights.len());
@@ -167,7 +215,6 @@ impl NeuralNetwork {
             .map(|x| NNSerializationValues::Size(x)).collect();
         // .copied();
         let data = byte_iterator
-            //     .skip(2 + amount_of_layers as usize * 2)
             .map(|x| x.unwrap())
             .tuple_windows()
             .step_by(4)
@@ -216,15 +263,40 @@ impl NeuralNetwork {
         zip(weight_iter.chain(bias_iter), values).for_each(|(elem, v)| {
             *elem = v
         });
-        let activation_values: VecDeque<ColumnVector> = biases.iter()
+        let mut activation_values: VecDeque<ColumnVector> = biases.iter()
+            .map(|x| ColumnVector::new_with_elements(x.data.len(), 0.0))
+            .collect();
+        activation_values.push_front(ColumnVector::new_with_elements(weights[0].data[0].len(), 0.0));
+
+        let z_values: VecDeque<ColumnVector> = biases.iter()
             .map(|x| ColumnVector::new_with_elements(x.data.len(), 0.0))
             .collect();
         NeuralNetwork {
             weights,
             biases,
             activation_values,
+            z_values,
         }
     }
+
+    // pub fn stochastic_gradient_descent(
+    //     self,
+    //     training_data: &mut [(ColumnVector, ColumnVector)],
+    //     mini_batch_size: usize,
+    //     learning_rate: usize,
+    // ) {
+    //     let mut rng = rand::thread_rng();
+    //     training_data.shuffle(&mut rng);
+    //     training_data.windows(mini_batch_size).step_by(mini_batch_size).for_each(|batch| {
+    //         batch.iter().for_each(|(input_vector, desired_vector)| {
+    //
+    //         });
+    //     });
+    // }
+    //
+    // pub fn backpropagation(mut self, input_vector: &ColumnVector, desired_vector: &ColumnVector) {
+    //     self.calculate_all_activation_values(input_vector);
+    // }
 
     fn deserialize_from_file(file_path: &str) -> NeuralNetwork {
         let data_iterator = NeuralNetwork::deserialize_from_file_to_values(file_path);
