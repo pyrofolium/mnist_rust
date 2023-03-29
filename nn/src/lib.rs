@@ -88,7 +88,7 @@ impl NeuralNetwork {
     //     }
     // }
 
-    pub fn calculate_all_activation_values(&mut self, input: &ColumnVector) {
+    pub fn forward_pass(&mut self, input: &ColumnVector) {
         for (index, elem) in input.data.iter().enumerate() {
             self.activation_values[0].data[index] = *elem;
         }
@@ -103,7 +103,7 @@ impl NeuralNetwork {
 
     pub fn calculate_mean_square_error(mut self, inputs: &Vec<ColumnVector>, expected_outputs: &Vec<ColumnVector>) -> f32 {
         zip(inputs, expected_outputs).map(|(input, expected)| {
-            self.calculate_all_activation_values(input);
+            self.forward_pass(input);
             (self.activation_values.back().unwrap() - expected).magnitude_squared()
         }).reduce(|acc, x| acc + x).unwrap() / (2.0 * (expected_outputs.len() as f32))
     }
@@ -295,7 +295,13 @@ impl NeuralNetwork {
     // }
     //
     // pub fn backpropagation(mut self, input_vector: &ColumnVector, desired_vector: &ColumnVector) {
-    //     self.calculate_all_activation_values(input_vector);
+    //     self.forward_pass(input_vector);
+    //     let aL = self.activation_values.iter().last().unwrap();
+    //     let zL = self.z_values.iter().last().unwrap();
+    //     let errors: VecDeque<ColumnVector> = VecDeque::new();
+    //     output_error = ColumnVector::new_with_elements()
+    //     cost_deriv(desired_vector,input_vector)._hadamard_product(relu_deriv_vec(zL),
+    //
     // }
 
     fn deserialize_from_file(file_path: &str) -> NeuralNetwork {
@@ -392,7 +398,8 @@ impl<'a> Iterator for SerializerIteratorNN<'a> {
 impl fmt::Display for NeuralNetwork {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // self.weights.fmt(f).unwrap();
-        self.activation_values.fmt(f)
+        // self.activation_values.fmt(f)
+        self.z_values.fmt(f)
         // self.biases.fmt(f)
     }
 }
@@ -414,15 +421,17 @@ mod tests {
         }
         weights.push(Matrix::zeros(matrix_size, matrix_size));
 
-        let mut test_nn = NeuralNetwork::new_from_vecs(weights, None, None);
+        let mut test_nn = NeuralNetwork::new_from_vecs(weights, None, None, None);
         let input_vector = ColumnVector::new_with_elements(matrix_size, 1.0);
         let input_vector2 = input_vector.clone();
         let zero_input = ColumnVector::new_with_elements(matrix_size, 0.0);
-        test_nn.calculate_all_activation_values(&input_vector);
+        test_nn.forward_pass(&input_vector);
         println!("{}", test_nn);
         for (index, value) in test_nn.activation_values.iter().enumerate() {
             assert_eq!(value, if index != test_nn.activation_values.len() - 1 { &input_vector2 } else { &zero_input });
         }
+
+        let small_nn = NeuralNetwork::new_from_vecs()
     }
 
     #[test]
@@ -431,7 +440,7 @@ mod tests {
         let m2 = Matrix::from_vec(m1.data.clone());
         let b1 = ColumnVector::from_vec(vec![1.0, 1.0]);
         let b2 = ColumnVector::from_vec(b1.data.clone());
-        let nn = NeuralNetwork::new_from_vecs(vec![m1, m2], Some(vec![b1, b2]), None);
+        let nn = NeuralNetwork::new_from_vecs(vec![m1, m2], Some(vec![b1, b2]), None, None);
         let test_match = vec![NNSerializationValues::Size(3), //layers
                               NNSerializationValues::Size(2), //size of first layer
                               NNSerializationValues::Size(2), //size of second layer
